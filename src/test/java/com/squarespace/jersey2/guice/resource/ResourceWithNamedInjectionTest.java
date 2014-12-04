@@ -19,13 +19,16 @@ package com.squarespace.jersey2.guice.resource;
 import static com.squarespace.jersey2.guice.resource.HelloServiceImpl.ANNOTATED_HELLO;
 import static com.squarespace.jersey2.guice.resource.HelloServiceImpl.DEFAULT_HELLO;
 import static com.squarespace.jersey2.guice.resource.HelloServiceImpl.NAMED_HELLO;
+import static com.squarespace.jersey2.guice.resource.HelloServiceImpl.PROVIDED_HELLO;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import javax.inject.Named;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.WebTarget;
@@ -40,9 +43,12 @@ import org.testng.annotations.Test;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Injector;
+import com.google.inject.Key;
 import com.google.inject.Module;
+import com.google.inject.Provides;
 import com.google.inject.name.Names;
 import com.google.inject.servlet.ServletModule;
+import com.google.inject.util.Modules;
 import com.squarespace.jersey2.guice.BootstrapUtils;
 import com.squarespace.jersey2.guice.utils.HttpServer;
 import com.squarespace.jersey2.guice.utils.HttpServerUtils;
@@ -50,6 +56,8 @@ import com.squarespace.jersey2.guice.utils.HttpServerUtils;
 public class ResourceWithNamedInjectionTest {
 
   private static HttpServer SERVER;
+  
+  private static Injector injector;
 
   @BeforeClass
   public void setUp() throws IOException {
@@ -64,11 +72,31 @@ public class ResourceWithNamedInjectionTest {
         bind(HelloService.class).toInstance(new HelloServiceImpl(DEFAULT_HELLO));
         bind(HelloService.class).annotatedWith(Names.named("simple")).toInstance(new HelloServiceImpl(NAMED_HELLO));
         bind(HelloService.class).annotatedWith(Other.class).toInstance(new HelloServiceImpl(ANNOTATED_HELLO));
+        bind(HelloService.class).annotatedWith(Names.named("overridden")).toInstance(new HelloServiceImpl(NAMED_HELLO));
       }
-    });
 
-    @SuppressWarnings("unused")
-    Injector injector = BootstrapUtils.newInjector(locator, modules);
+      @Provides
+      public HelloProvidedService providesService(final HelloService service) {
+        return new HelloProvidedService() {
+            
+            @Override
+            public String helloProvided() {
+                return service.hello() + " (provided)";
+            }
+        };
+      };
+    });
+    
+    modules = Arrays.asList( Modules.override(modules).with(new AbstractModule() {
+
+        @Override
+        protected void configure() {
+            bind(HelloService.class).annotatedWith(Names.named("overridden")).toInstance(new HelloServiceImpl(NAMED_HELLO + " overridden"));
+        }
+        
+    }));
+
+    injector = BootstrapUtils.newInjector(locator, modules);
 
     BootstrapUtils.install(locator);
 
@@ -116,5 +144,28 @@ public class ResourceWithNamedInjectionTest {
     String value = target.path("annotaded").request(MediaType.TEXT_PLAIN).get(String.class);
     assertNotNull(value);
     assertEquals(value, ANNOTATED_HELLO);
+  }
+  
+  @Test
+  public void providesTest() throws IOException {
+    WebTarget target = getWebTarget();
+    String value = target.path("provided").request(MediaType.TEXT_PLAIN).get(String.class);
+    assertNotNull(value);
+    assertEquals(value, PROVIDED_HELLO);
+  }
+  
+  @Test
+  public void overriddenTest() throws IOException {
+    WebTarget target = getWebTarget();
+    String value = target.path("overridden").request(MediaType.TEXT_PLAIN).get(String.class);
+    assertNotNull(value);
+    assertEquals(value, NAMED_HELLO + " overridden");
+  }
+  
+  @Test
+  public void overriddenDirectlyTest() throws IOException {
+    String value = injector.getInstance(Key.get(HelloService.class, Names.named("overridden"))).hello();
+    assertNotNull(value);
+    assertEquals(value, NAMED_HELLO + " overridden");
   }
 }

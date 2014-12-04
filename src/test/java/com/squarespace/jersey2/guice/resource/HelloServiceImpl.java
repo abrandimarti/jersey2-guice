@@ -7,7 +7,9 @@ public class HelloServiceImpl implements HelloService {
   public static final String ANNOTATED_HELLO = "hello (annotaded)";
   
   public static final String NAMED_HELLO = "hello (named)";
-  
+
+  public static final String PROVIDED_HELLO = "hello (provided)";
+
   private final String value;
   
   public HelloServiceImpl(String value) {
